@@ -22,6 +22,8 @@
   import GradeManager from './teacher/GradeManager.vue';           // 교사: 성적 관리
   import StudentRecordManager from './teacher/StudentRecordManager.vue'; // 교사: 생기부 업로드
   import StudentRecordCheck from './dashboard/StudentRecordCheck.vue';   // 학생: 생기부 점검
+
+  import TeacherAiWriter from '../components/teacher/TeacherAiWriter.vue';
   
   const props = defineProps({
     user: { type: Object, required: true },
@@ -140,7 +142,7 @@
             @close="handleFormClose" 
             @submitted="handleFormClose" 
           />
-          
+          <TeacherAiWriter v-if="activeTab === 'ai_writer'" />
           <MyGrade 
             v-if="activeTab === 'grades' && globalSettings.showGradeTab" 
             :user="user" 
