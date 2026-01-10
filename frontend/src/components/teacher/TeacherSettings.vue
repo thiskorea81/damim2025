@@ -21,41 +21,41 @@
     duties: [],
     subjects: [],
     clubs: [],
-    apiKeys: { gemini: '', gpt: '' }
+    apiKeys: { gemini: '', gpt: '' } // 여기서 입력받음
   });
   
-  // 2. 전역 설정 데이터 (공개여부, 프롬프트)
+  // 2. 전역 설정 데이터
   const globalSettings = reactive({
-    // 기존 탭 설정
     showGradeTab: false,
     showRecordTab: false,
-    // [신규] 신청 메뉴 설정 (기본값 true)
     showAppStatus: true,
     showAbsence: true,
     showFieldTrip: true,
-    // AI 설정
     enableStudentAi: false,
     gradeAnalysisPrompt: ''
   });
   
   // 데이터 로드
   onMounted(async () => {
-    // A. 교사 개인 설정
+    // A. 교사 개인 설정 로드
     if (props.userData) {
       form.duties = props.userData.duties || [];
       form.subjects = props.userData.subjects || [];
       form.clubs = props.userData.clubs || [];
-      form.apiKeys.gemini = props.userData.apiKeys?.gemini || '';
-      form.apiKeys.gpt = props.userData.apiKeys?.gpt || '';
+      
+      // [수정] 개인 프로필에 저장된 키가 있다면 불러오기 (우선순위 1)
+      if (props.userData.apiKeys) {
+          form.apiKeys.gemini = props.userData.apiKeys.gemini || '';
+          form.apiKeys.gpt = props.userData.apiKeys.gpt || '';
+      }
     }
   
-    // B. 전역 설정
+    // B. 전역 설정 로드
     try {
       const docRef = doc(db, 'settings', 'global');
       const docSnap = await getDoc(docRef);
       if (docSnap.exists()) {
         const data = docSnap.data();
-        // DB 데이터 불러오기 (없는 필드는 기본값 유지)
         Object.assign(globalSettings, {
           showGradeTab: data.showGradeTab ?? false,
           showRecordTab: data.showRecordTab ?? false,
@@ -65,6 +65,10 @@
           enableStudentAi: data.enableStudentAi ?? false,
           gradeAnalysisPrompt: data.gradeAnalysisPrompt ?? `당신은 학생들의 성적을 분석하고...`
         });
+  
+        // [수정] 만약 개인 프로필에 키가 없었다면, 전역 설정의 키를 불러와서 입력창에 채움 (우선순위 2)
+        if (!form.apiKeys.gemini && data.geminiApiKey) form.apiKeys.gemini = data.geminiApiKey;
+        if (!form.apiKeys.gpt && data.gptApiKey) form.apiKeys.gpt = data.gptApiKey;
       }
     } catch (e) {
       console.error("설정 로드 실패:", e);
@@ -79,19 +83,22 @@
     try {
       const appId = getAppId();
       
-      // 1. 교사 개인 설정 저장
+      // 1. 교사 개인 프로필 업데이트 (내 정보)
       const userRef = doc(db, 'artifacts', appId, 'users', props.user.uid);
       await updateDoc(userRef, {
         duties: form.duties,
         subjects: form.subjects,
         clubs: form.clubs,
-        apiKeys: form.apiKeys
+        apiKeys: form.apiKeys // 개인 정보에도 백업 저장
       });
   
-      // 2. 전역 설정 저장
+      // 2. 전역 설정 저장 (AI Writer가 참조하는 곳)
+      // [중요] 여기에 gptApiKey와 geminiApiKey를 명시적으로 저장해야 함
       const settingsToSave = {
         ...globalSettings,
-        sharedApiKey: globalSettings.enableStudentAi ? form.apiKeys.gemini : ''
+        geminiApiKey: form.apiKeys.gemini, // [핵심 수정] Gemini 키 저장
+        gptApiKey: form.apiKeys.gpt,       // [핵심 수정] GPT 키 저장
+        sharedApiKey: globalSettings.enableStudentAi ? form.apiKeys.gemini : '' // 학생용 공유 키
       };
   
       await setDoc(doc(db, 'settings', 'global'), settingsToSave, { merge: true });

@@ -154,7 +154,7 @@
                 class="px-3 py-1.5 text-xs font-bold rounded-md transition flex items-center gap-1"
                 :class="selectedModel === 'gpt' ? 'bg-white shadow text-green-600' : 'text-gray-400'"
               >
-                <Cpu class="w-3 h-3"/> GPT-4
+                <Cpu class="w-3 h-3"/> GPT
               </button>
             </div>
           </div>
