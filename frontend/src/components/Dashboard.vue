@@ -1,29 +1,35 @@
+// frontend/src/components/Dashboard.vue
 <script setup>
   import { ref, computed, onMounted } from 'vue';
   import { signOut } from 'firebase/auth';
-  import { auth, db } from '../firebase'; // db 추가
-  import { doc, getDoc } from 'firebase/firestore'; // firestore 함수 추가
-  import { LogOut, BookOpen, GraduationCap } from 'lucide-vue-next';
+  import { auth, db } from '../firebase';
+  import { doc, getDoc } from 'firebase/firestore';
+  import { LogOut, GraduationCap, BookOpen } from 'lucide-vue-next';
   
-  // 컴포넌트 임포트
+  // --- 컴포넌트 임포트 ---
   import TabMenu from './dashboard/TabMenu.vue';
   import ProfileCard from './dashboard/ProfileCard.vue';
-  import AbsenceForm from './forms/AbsenceForm.vue';
   import StudentHistory from './dashboard/StudentHistory.vue';
-  import ClassDocumentManager from './teacher/ClassDocumentManager.vue';
-  import StudentManager from './teacher/StudentManager.vue';
-  import TeacherSettings from './teacher/TeacherSettings.vue'; 
   import ForceChangePassword from './dashboard/parts/ForceChangePassword.vue';
   import EditProfileModal from './dashboard/parts/EditProfileModal.vue';
   
-  // [신규 및 수정] 성적, 체험학습, 생기부 관련 컴포넌트
+  // [신청서 폼] (학생/교사 공용 View)
+  import AbsenceForm from './forms/AbsenceForm.vue';
+  import ExperientialLearningForm from '../views/ExperientialLearningForm.vue'; // 학생용 신청 폼
+  import FieldTripReportView from '../views/FieldTripReportView.vue';       // 결과보고서 View
+  
+  // [학생용 기능]
   import MyGrade from './grade/MyGrade.vue';
-  import ExperientialLearningForm from '../views/ExperientialLearningForm.vue';
-  import GradeManager from './teacher/GradeManager.vue';           // 교사: 성적 관리
-  import StudentRecordManager from './teacher/StudentRecordManager.vue'; // 교사: 생기부 업로드
-  import StudentRecordCheck from './dashboard/StudentRecordCheck.vue';   // 학생: 생기부 점검
-
-  import TeacherAiWriter from '../components/teacher/TeacherAiWriter.vue';
+  import StudentRecordCheck from './dashboard/StudentRecordCheck.vue';
+  
+  // [교사용 기능]
+  import ClassDocumentManager from './teacher/ClassDocumentManager.vue';
+  import StudentManager from './teacher/StudentManager.vue';
+  import TeacherSettings from './teacher/TeacherSettings.vue'; 
+  import GradeManager from './teacher/GradeManager.vue';
+  import StudentRecordManager from './teacher/StudentRecordManager.vue'; 
+  // [신규] 교사용 체험학습 승인/출력 관리자
+  import TeacherFieldTripManager from '../components/teacher/TeacherFieldTripManager.vue'; 
   
   const props = defineProps({
     user: { type: Object, required: true },
@@ -37,13 +43,16 @@
   const showPasswordModal = computed(() => props.userData?.mustChangePassword === true);
   const showProfileModal = computed(() => props.userData?.isNewUser === true);
   
-  // [신규] 전역 설정 상태 (탭 공개 여부 등)
+  // [설정] 전역 설정 상태
   const globalSettings = ref({ 
     showGradeTab: false, 
-    showRecordTab: false 
+    showRecordTab: false,
+    showAppStatus: true,
+    showAbsence: true,
+    showFieldTrip: true
   });
   
-  // [신규] 설정 로드 함수
+  // 설정 로드 함수
   const loadSettings = async () => {
     try {
       const snap = await getDoc(doc(db, 'settings', 'global'));
@@ -67,12 +76,15 @@
     editTargetData.value = data;
     if (data.type === '결석신고서') activeTab.value = 'absence';
     else if (data.type === '체험학습') activeTab.value = 'trip_app';
+    else if (data.type === '결과보고서') activeTab.value = 'trip_report';
     else alert("수정 가능한 항목이 아닙니다.");
   };
   
   const handleFormClose = () => {
     editTargetData.value = null;
-    activeTab.value = 'history';
+    // 교사는 학생관리로, 학생은 내역으로 복귀
+    if (safeRole.value === 'teacher') activeTab.value = 'students';
+    else activeTab.value = 'history';
   };
   </script>
   
@@ -88,7 +100,7 @@
         :forceOpen="true" 
       />
   
-      <nav class="bg-white border-b border-gray-200 sticky top-0 z-50">
+      <nav class="bg-white border-b border-gray-200 sticky top-0 z-40">
         <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
           <div class="flex justify-between h-16 items-center">
             
@@ -142,7 +154,7 @@
             @close="handleFormClose" 
             @submitted="handleFormClose" 
           />
-          <TeacherAiWriter v-if="activeTab === 'ai_writer'" />
+          
           <MyGrade 
             v-if="activeTab === 'grades' && globalSettings.showGradeTab" 
             :user="user" 
@@ -156,15 +168,21 @@
           />
   
           <div v-if="activeTab === 'trip_app'">
-            <ExperientialLearningForm :user="user" :userData="userData" />
+            <ExperientialLearningForm 
+              :user="user" 
+              :userData="userData" 
+              :editData="editTargetData"
+              @close="handleFormClose"
+            />
           </div>
   
-          <div v-if="activeTab === 'trip_report'" class="bg-white rounded-2xl border border-dashed border-gray-300 p-16 flex flex-col items-center justify-center text-center">
-            <div class="w-16 h-16 bg-green-50 text-green-500 rounded-full flex items-center justify-center mb-4">
-              <BookOpen class="w-8 h-8" />
-            </div>
-            <h2 class="text-xl font-bold text-gray-800 mb-2">체험학습 보고서</h2>
-            <p class="text-gray-500">이 기능은 아직 준비 중입니다.</p>
+          <div v-if="activeTab === 'trip_report'">
+             <FieldTripReportView 
+               :user="user" 
+               :userData="userData"
+               :editData="editTargetData"
+               @close="handleFormClose"
+             />
           </div>
         </template>
   
@@ -193,6 +211,28 @@
           
           <StudentRecordManager 
             v-if="activeTab === 'record_mgmt'" 
+          />
+  
+          <AbsenceForm 
+            v-if="activeTab === 'absence'" 
+            :user="user" 
+            :userData="userData" 
+            @close="activeTab = 'students'" 
+          />
+          
+          <ExperientialLearningForm 
+            v-if="activeTab === 'trip_app'"
+              :user="user" 
+              :userData="userData" 
+              :editData="editTargetData"
+              @close="handleFormClose"
+            />
+  
+          <FieldTripReportView 
+            v-if="activeTab === 'trip_report'" 
+            :user="user" 
+            :userData="userData" 
+            @close="activeTab = 'students'"
           />
         </template>
   
