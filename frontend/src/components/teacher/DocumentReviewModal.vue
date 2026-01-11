@@ -5,7 +5,7 @@
   
   const props = defineProps({
     doc: Object,
-    teacherData: Object, // teacherSignature 포함
+    teacherData: Object,
     cumulativeData: Object
   });
   
@@ -14,11 +14,11 @@
   const signaturePad = ref(null);
   const useSavedSignature = ref(false);
   
-  // 결석신고서용 상태 (교사 확인 입력용)
+  // 결석신고서용 상태
   const absenceForm = ref({
     checkMethod: '통화',
     methodDetail: '',
-    proofType: '증빙서류 없음', // 기본값
+    proofType: '증빙서류 없음',
   });
   
   // 초기화
@@ -26,10 +26,9 @@
     if (props.teacherData?.teacherSignature) {
       useSavedSignature.value = true;
     }
-    // 결석신고서일 경우, 학생이 선택한 증빙서류 타입을 기본값으로 세팅해주면 편함
+    // 기존 proofType 연동
     if (props.doc.type === '결석신고서' && props.doc.proofDocType) {
-       // 교사가 확인할 때 학생이 낸 서류 종류를 참고하도록 설정 (선택사항)
-       // absenceForm.value.proofType = props.doc.proofDocType; 
+       // 필요 시 주석 해제: absenceForm.value.proofType = props.doc.proofDocType; 
     }
   });
   
@@ -39,7 +38,8 @@
     return '결과보고서 검토';
   });
   
-  // 기간 정보 포맷팅
+  // ... (formattedPeriod, totalDays, studentSigImg, parentSigImg 등의 computed는 기존과 동일하게 유지) ...
+  // (코드 길이 절약을 위해 생략했으나, 기존 코드를 그대로 두시면 됩니다)
   const formattedPeriod = computed(() => {
     const d = props.doc;
     if (!d) return '-';
@@ -49,7 +49,6 @@
     return '-';
   });
   
-  // 총 일수 정보
   const totalDays = computed(() => {
     const d = props.doc;
     if (!d) return '';
@@ -57,16 +56,11 @@
     return days ? `(${days}일간)` : '';
   });
   
-  // 서명 이미지 경로
-  const studentSigImg = computed(() => {
-    const d = props.doc;
-    return d.studentSign || d.studentSignImage || d.student?.studentSignImage || d.signatures?.studentSig || null;
-  });
-  const parentSigImg = computed(() => {
-    const d = props.doc;
-    return d.parentSign || d.parentSignImage || d.guardian?.parentSignImage || d.signatures?.parentSig || null;
-  });
+  const studentSigImg = computed(() => props.doc.studentSign || props.doc.studentSignImage || props.doc.student?.studentSignImage || props.doc.signatures?.studentSig || null);
+  const parentSigImg = computed(() => props.doc.parentSign || props.doc.parentSignImage || props.doc.guardian?.parentSignImage || props.doc.signatures?.parentSig || null);
   
+  
+  // [핵심 수정] 승인 핸들러 안전성 강화
   const handleApprove = () => {
     let approvalPayload = {
       docId: props.doc.id,
@@ -75,15 +69,23 @@
       teacherSignature: null
     };
   
+    // 1. 결과보고서가 아닌 경우 (서명 필요)
     if (props.doc.type !== '결과보고서') {
+      // A. 저장된 서명 사용
       if (useSavedSignature.value && props.teacherData.teacherSignature) {
         approvalPayload.teacherSignature = props.teacherData.teacherSignature;
-      } else {
-        if (signaturePad.value?.isEmpty()) return alert("교사 서명이 필요합니다.");
+      } 
+      // B. 직접 서명
+      else {
+        // [수정] signaturePad가 없거나 비어있는지 확실하게 체크
+        if (!signaturePad.value || signaturePad.value.isEmpty()) {
+          return alert("담임교사 서명을 해주세요.");
+        }
         approvalPayload.teacherSignature = signaturePad.value.getSignatureData();
       }
     }
   
+    // 2. 결석신고서 추가 데이터
     if (props.doc.type === '결석신고서') {
       approvalPayload.teacherCheck = {
         method: absenceForm.value.checkMethod,
@@ -135,25 +137,18 @@
             </h4>
   
             <div v-if="doc.type === '결석신고서'" class="space-y-4 text-sm">
-              
               <div class="grid grid-cols-2 gap-4">
                 <div class="bg-white border border-gray-200 rounded p-3">
                   <span class="block text-xs font-bold text-gray-500 mb-1">구분</span>
-                  <p class="font-bold text-gray-800 text-lg">{{ doc.absenceDetail || '결석' }}</p> </div>
+                  <p class="font-bold text-gray-800 text-lg">{{ doc.absenceDetail || '결석' }}</p>
+                </div>
                 <div class="bg-white border border-gray-200 rounded p-3">
                   <span class="block text-xs font-bold text-gray-500 mb-1">결석 유형</span>
                   <span class="px-2 py-1 bg-gray-100 rounded text-gray-700 font-bold text-xs border">
                     {{ doc.absenceType || '질병결석' }}
                   </span>
                 </div>
-                <div v-if="doc.period?.startPeriod || doc.period?.endPeriod" class="col-span-2 bg-white border border-gray-200 rounded p-3">
-                  <span class="block text-xs font-bold text-gray-500 mb-1">해당 교시</span>
-                  <p class="text-gray-800">
-                    {{ doc.period.startPeriod || '?' }}교시 ~ {{ doc.period.endPeriod || '?' }}교시
-                  </p>
-                </div>
               </div>
-  
               <div class="bg-white border border-gray-200 rounded p-3">
                 <span class="block text-xs font-bold text-gray-500 mb-1">결석 사유</span>
                 <p class="text-gray-800 font-bold">{{ doc.reason }}</p>
@@ -162,24 +157,14 @@
                 <span class="block text-xs font-bold text-gray-500 mb-1">학부모 의견</span>
                 <p class="text-gray-600">{{ doc.parentOpinion || '(의견 없음)' }}</p>
               </div>
-  
               <div class="bg-white border border-gray-200 rounded p-3">
                 <span class="block text-xs font-bold text-gray-500 mb-2 flex items-center gap-1">
                   <Paperclip class="w-3 h-3"/> 증빙서류 ({{ doc.proofDocType || '기타' }})
                 </span>
-                
                 <div v-if="doc.proofFileUrl" class="relative group w-fit">
-                  <img :src="doc.proofFileUrl" 
-                       class="max-h-60 rounded border border-gray-300 cursor-zoom-in hover:opacity-95 transition shadow-sm"
-                       onclick="window.open(this.src)" 
-                       alt="증빙서류">
-                  <div class="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 group-hover:opacity-100 transition pointer-events-none rounded">
-                    <span class="text-white text-xs font-bold bg-black/50 px-2 py-1 rounded">클릭하여 원본보기</span>
-                  </div>
+                  <img :src="doc.proofFileUrl" class="max-h-60 rounded border border-gray-300 cursor-zoom-in" onclick="window.open(this.src)">
                 </div>
-                <div v-else class="text-sm text-gray-400 italic py-2">
-                  첨부된 증빙서류 이미지가 없습니다.
-                </div>
+                <div v-else class="text-sm text-gray-400 italic py-2">첨부된 증빙서류 없음</div>
               </div>
             </div>
   
@@ -201,12 +186,12 @@
             <div class="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-dashed">
               <div class="flex flex-col items-center p-3 bg-gray-50 rounded-lg border">
                 <span class="text-xs font-bold text-gray-500 mb-2">학생 서명</span>
-                <img v-if="studentSigImg" :src="studentSigImg" class="h-12 object-contain" alt="학생 서명">
+                <img v-if="studentSigImg" :src="studentSigImg" class="h-12 object-contain">
                 <span v-else class="text-xs text-red-400">(서명 없음)</span>
               </div>
               <div class="flex flex-col items-center p-3 bg-gray-50 rounded-lg border">
                 <span class="text-xs font-bold text-gray-500 mb-2">보호자 서명</span>
-                <img v-if="parentSigImg" :src="parentSigImg" class="h-12 object-contain" alt="보호자 서명">
+                <img v-if="parentSigImg" :src="parentSigImg" class="h-12 object-contain">
                 <span v-else class="text-xs text-red-400">(서명 없음)</span>
               </div>
             </div>
@@ -220,7 +205,7 @@
                  <select v-model="absenceForm.checkMethod" class="w-full text-sm border rounded p-1"><option>통화</option><option>면담</option><option>기타</option></select>
                </div>
                <div>
-                 <label class="block text-xs font-bold mb-1">증빙 서류 (담임 확인용)</label>
+                 <label class="block text-xs font-bold mb-1">증빙 서류</label>
                  <select v-model="absenceForm.proofType" class="w-full text-sm border rounded p-1"><option>증빙서류 없음</option><option>병원진료영수증</option><option>투약봉지</option><option>병원처방전</option><option>진단서/소견서</option></select>
                </div>
             </div>
@@ -240,6 +225,7 @@
                   <CheckCircle class="w-3 h-3"/> 저장된 서명 적용
                 </span>
               </div>
+              
               <div v-else class="h-32 border rounded-lg bg-white overflow-hidden relative">
                 <SignaturePad ref="signaturePad" />
                 <div class="absolute top-2 right-2 pointer-events-none text-xs text-gray-400 flex items-center gap-1">

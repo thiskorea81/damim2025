@@ -1,9 +1,9 @@
 <script setup>
-  import { ref, onMounted } from 'vue';
+  import { ref, onMounted, watch } from 'vue'; // watch 추가
   import { useRouter } from 'vue-router';
   import { collection, addDoc, serverTimestamp } from 'firebase/firestore'; 
   import { db } from '../firebase'; 
-  import { Send, Loader2 } from 'lucide-vue-next'; // 아이콘 추가
+  import { Send, Loader2 } from 'lucide-vue-next';
   
   // 폼 구성 요소
   import StudentInfo from '../components/forms/StudentInfo.vue';
@@ -16,7 +16,6 @@
   const router = useRouter(); 
   const isSubmitting = ref(false);
   
-  // 자식 컴포넌트 접근을 위한 ref
   const signatureRef = ref(null);
   
   const form = ref({
@@ -37,26 +36,42 @@
     }
   });
   
-  onMounted(() => {
+  // [핵심] 사용자 데이터로 폼 채우기 함수 (분리됨)
+  const updateFormFromUserData = () => {
     if (props.userData) {
-      form.value.student.name = props.userData.name || '';
-      form.value.student.grade = props.userData.grade || '';
-      form.value.student.classNum = props.userData.classNum || props.userData.classroom || props.userData.class || '';
-      form.value.student.number = props.userData.number || '';
-      form.value.student.phone = props.userData.phone || '';
+      const d = props.userData;
       
-      form.value.guardian.parentName = props.userData.guardian || props.userData.parentName || '';
-      form.value.guardian.parentPhone = props.userData.guardianPhone || props.userData.parentPhone || '';
+      form.value.student.name = d.name || '';
+      form.value.student.grade = d.grade || '';
+      
+      // [수정] 반 정보 매핑 강화 (d.class가 가장 일반적임)
+      form.value.student.classNum = d.class || d.classNum || d.assignedClass || d.classroom || '';
+      
+      form.value.student.number = d.number || '';
+      form.value.student.phone = d.phone || '';
+      
+      form.value.guardian.parentName = d.guardian || d.parentName || '';
+      form.value.guardian.parentPhone = d.guardianPhone || d.parentPhone || '';
     }
+  };
+  
+  // 1. 마운트 시 실행
+  onMounted(() => {
+    updateFormFromUserData();
   });
+  
+  // 2. [중요] 데이터가 늦게 로드될 경우를 대비해 감시
+  watch(() => props.userData, () => {
+    updateFormFromUserData();
+  }, { deep: true, immediate: true });
   
   const handleSubmit = async () => {
     // 1. 기본 유효성 검사
     if (!form.value.period.isRuleChecked) return alert('불허 기간 확인에 체크해주세요.');
-    if (form.value.period.totalDays === 0) return alert('기간을 올바르게 선택해주세요.');
+    if (form.value.period.totalDays <= 0) return alert('기간을 올바르게 선택해주세요.');
     if (!form.value.plan.location || !form.value.plan.detail) return alert('장소와 계획을 입력해주세요.');
     
-    // 2. 서명 데이터 가져오기 (기존 컴포넌트 방식 활용)
+    // 2. 서명 데이터 가져오기
     if (!signatureRef.value) return;
     const sigData = signatureRef.value.getSignatures();
   
@@ -64,15 +79,13 @@
     if (sigData.isStudentEmpty) return alert('학생 서명이 필요합니다.');
     if (sigData.isParentEmpty) return alert('보호자 서명이 필요합니다.');
   
-    if (!confirm('신청서를 제출하시겠습니까?')) return;
+    if (!confirm(`총 ${form.value.period.totalDays}일간의 신청서를 제출하시겠습니까?`)) return;
     isSubmitting.value = true;
   
     try {
-      // 서명 데이터를 폼 데이터에 병합
       form.value.student.studentSignImage = sigData.student;
       form.value.guardian.parentSignImage = sigData.parent;
   
-      // DB 저장용 페이로드
       const payload = {
         userId: props.user?.uid, 
         type: '체험학습',         
@@ -80,7 +93,7 @@
         period: form.value.period,
         plan: form.value.plan,
         guardian: form.value.guardian,
-        status: '대기중',        
+        status: 'pending',        
         createdAt: serverTimestamp(), 
         
         // 검색용 필드
@@ -95,9 +108,7 @@
       await addDoc(collection(db, 'experiential_learning'), payload);
   
       alert('신청서가 성공적으로 제출되었습니다.');
-      
-      // (선택) 제출 완료 후 닫기 이벤트
-      // emit('close'); 
+      // 필요한 경우 router.push('/') 등으로 이동
     } catch (error) {
       console.error('Error submitting form:', error);
       alert('제출 중 오류가 발생했습니다.');
